@@ -1,0 +1,74 @@
+name: Create Versioned GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' 
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to create release for (e.g., v1.1.0). Must exist.'
+        required: true
+
+permissions:
+  contents: write 
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build extension
+        run: yarn build
+
+      - name: Get tag name
+        id: get_tag
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "TAG_NAME=${GITHUB_REF
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "TAG_NAME=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "Could not determine tag name"; exit 1
+          fi
+        shell: bash
+
+      - name: Create zip archive
+        id: zipper
+        run: |
+          TAG=${{ steps.get_tag.outputs.TAG_NAME }}
+          ZIP_FILENAME="vroxy-extension-${TAG}.zip"
+          cd build
+          zip -r "../${ZIP_FILENAME}" .
+          echo "ZIP_FILE_PATH=${ZIP_FILENAME}" >> $GITHUB_OUTPUT
+          cd ..
+        shell: bash
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          
+          tag_name: ${{ steps.get_tag.outputs.TAG_NAME }}
+          
+          generate_release_notes: true
+          
+          
+          draft: false
+          prerelease: false
+          
+          files: ${{ steps.zipper.outputs.ZIP_FILE_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
